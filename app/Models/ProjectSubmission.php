@@ -11,11 +11,13 @@ class ProjectSubmission extends Model
 
     protected $fillable = [
         'user_id',
+        'project_type_id',
         'title',
         'tags',
         'owner_type',
         'owner_name',
         'team_members',
+        'team_member_ids',
         'description',
         'cover_image_path',
         'document_path',
@@ -34,17 +36,28 @@ class ProjectSubmission extends Model
     ];
 
     protected $casts = [
-        'tags' => 'array',
-        'team_members' => 'array',
-        'project_image_paths' => 'array',
-        'document_paths' => 'array',
-        'source_code_paths' => 'array',
-        'dataset_paths' => 'array',
-        'reviewed_at' => 'datetime',
+        'tags'               => 'array',
+        'team_members'       => 'array',
+        'team_member_ids'    => 'array',
+        'project_image_paths'=> 'array',
+        'document_paths'     => 'array',
+        'source_code_paths'  => 'array',
+        'dataset_paths'      => 'array',
+        'reviewed_at'        => 'datetime',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function projectType()
+    {
+        return $this->belongsTo(ProjectType::class);
+    }
+
+    public function contributions()
+    {
+        return $this->hasMany(GroupContribution::class);
     }
 }

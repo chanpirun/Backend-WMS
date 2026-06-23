@@ -35,16 +35,37 @@ class ProjectSubmissionController extends Controller
         return is_array($files) ? array_values($files) : [$files];
     }
 
+    public function publicIndex()
+    {
+        $items = ProjectSubmission::with(['user', 'projectType'])
+            ->where('visibility', 'public')
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'data' => $items,
+        ]);
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
+        $scope = $request->query('scope');
 
-        $query = ProjectSubmission::with('user')->latest();
+        $query = ProjectSubmission::with(['user', 'projectType'])->latest();
 
-        // Members should only see their own submissions.
-        if ($user && $user->role === 'member') {
+        if ($scope === 'group_hub') {
+            // Return all submissions where the user is the owner OR is tagged as a team member
+            $userId = $user->id;
+            $query->where(function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                  ->orWhereJsonContains('team_member_ids', $userId);
+            });
+        } elseif ($user && $user->role === 'member') {
+            // Default member view: only their own submissions
             $query->where('user_id', $user->id);
         }
+        // Assistants and Directors see all submissions (no extra filter)
 
         $items = $query->get();
 
@@ -69,21 +90,23 @@ class ProjectSubmissionController extends Controller
         ]);
 
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'tags' => 'required|string',
-            'owner_type' => 'required|in:individual,team',
-            'team_members' => 'nullable|string',
-            'description' => 'required|string',
-            'cover_image' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
-            'document' => 'required',
-            'document.*' => 'file|mimes:pdf,doc,docx|max:10240',
-            'source_code' => 'required',
-            'source_code.*' => 'file|mimes:zip|max:20480',
-            'dataset' => 'required',
-            'dataset.*' => 'file|mimes:csv,json,xlsx,xls,zip|max:20480',
+            'title'          => 'required|string|max:255',
+            'tags'           => 'required|string',
+            'project_type_id'=> 'nullable|exists:project_types,id',
+            'owner_type'     => 'required|in:individual,team',
+            'team_members'   => 'nullable|string',
+            'team_member_ids'=> 'nullable|string',
+            'description'    => 'required|string',
+            'cover_image'    => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'document'       => 'required',
+            'document.*'     => 'file|mimes:pdf,doc,docx|max:10240',
+            'source_code'    => 'required',
+            'source_code.*'  => 'file|mimes:zip|max:102400',
+            'dataset'        => 'required',
+            'dataset.*'      => 'file|mimes:csv,json,xlsx,xls,zip|max:102400',
             'project_images' => 'nullable|array',
-            'project_images.*' => 'file|mimes:pdf,doc,docx,ppt,pptx,txt|max:10240',
-            'demo_link' => 'nullable|url|max:2048',
+            'project_images.*'=> 'file|mimes:pdf,doc,docx,ppt,pptx,txt|max:10240',
+            'demo_link'      => 'nullable|url|max:2048',
         ]);
 
         $tags = array_values(array_filter(array_map('trim', explode(',', $validated['tags']))));
@@ -96,33 +119,63 @@ class ProjectSubmissionController extends Controller
             }
         }
 
-        $coverImagePath = $request->file('cover_image')->store('submissions/covers', 'public');
+        // Parse team_member_ids — array of integer user IDs
+        $teamMemberIds = [];
+        if (!empty($validated['team_member_ids'])) {
+            $decoded = json_decode($validated['team_member_ids'], true);
+            if (is_array($decoded)) {
+                $teamMemberIds = array_values(array_filter(array_map('intval', $decoded)));
+            }
+        }
+
+        $coverFile = $request->file('cover_image');
+        $coverImagePath = $coverFile->storeAs(
+            'submissions/covers/' . uniqid(),
+            $coverFile->getClientOriginalName(),
+            'public'
+        );
 
         // document, source_code, and dataset can be single or multiple files.
         $documentFiles = $this->uploadedFiles($request, 'document');
         $documentPaths = [];
         foreach ($documentFiles as $docFile) {
-            $documentPaths[] = $docFile->store('submissions/documents', 'public');
+            $documentPaths[] = $docFile->storeAs(
+                'submissions/documents/' . uniqid(),
+                $docFile->getClientOriginalName(),
+                'public'
+            );
         }
         $documentPath = $documentPaths[0] ?? null;
 
         $sourceFiles = $this->uploadedFiles($request, 'source_code');
         $sourcePaths = [];
         foreach ($sourceFiles as $sFile) {
-            $sourcePaths[] = $sFile->store('submissions/source', 'public');
+            $sourcePaths[] = $sFile->storeAs(
+                'submissions/source/' . uniqid(),
+                $sFile->getClientOriginalName(),
+                'public'
+            );
         }
         $sourceCodePath = $sourcePaths[0] ?? null;
 
         $datasetFiles = $this->uploadedFiles($request, 'dataset');
         $datasetPaths = [];
         foreach ($datasetFiles as $dFile) {
-            $datasetPaths[] = $dFile->store('submissions/datasets', 'public');
+            $datasetPaths[] = $dFile->storeAs(
+                'submissions/datasets/' . uniqid(),
+                $dFile->getClientOriginalName(),
+                'public'
+            );
         }
         $datasetPath = $datasetPaths[0] ?? null;
 
         $projectImagePaths = [];
         foreach ($this->uploadedFiles($request, 'project_images') as $finalizedDocument) {
-            $projectImagePaths[] = $finalizedDocument->store('submissions/finalized-documents', 'public');
+            $projectImagePaths[] = $finalizedDocument->storeAs(
+                'submissions/finalized-documents/' . uniqid(),
+                $finalizedDocument->getClientOriginalName(),
+                'public'
+            );
         }
 
         $ownerName = $validated['owner_type'] === 'individual'
@@ -130,27 +183,29 @@ class ProjectSubmissionController extends Controller
             : implode(' / ', $teamMembers);
 
         $submission = ProjectSubmission::create([
-            'user_id' => $user->id,
-            'title' => $validated['title'],
-            'tags' => $tags,
-            'owner_type' => $validated['owner_type'],
-            'owner_name' => $ownerName,
-            'team_members' => $teamMembers,
-            'description' => $validated['description'],
-            'cover_image_path' => $coverImagePath,
-            'document_path' => $documentPath,
-            'document_paths' => $documentPaths,
-            'source_code_path' => $sourceCodePath,
-            'source_code_paths' => $sourcePaths,
-            'dataset_path' => $datasetPath,
-            'dataset_paths' => $datasetPaths,
-            'project_image_paths' => $projectImagePaths,
-            'demo_link' => $validated['demo_link'] ?? null,
-            'status' => 'pending',
-            'visibility' => 'private',
+            'user_id'            => $user->id,
+            'project_type_id'    => $validated['project_type_id'] ?? null,
+            'title'              => $validated['title'],
+            'tags'               => $tags,
+            'owner_type'         => $validated['owner_type'],
+            'owner_name'         => $ownerName,
+            'team_members'       => $teamMembers,
+            'team_member_ids'    => $teamMemberIds,
+            'description'        => $validated['description'],
+            'cover_image_path'   => $coverImagePath,
+            'document_path'      => $documentPath,
+            'document_paths'     => $documentPaths,
+            'source_code_path'   => $sourceCodePath,
+            'source_code_paths'  => $sourcePaths,
+            'dataset_path'       => $datasetPath,
+            'dataset_paths'      => $datasetPaths,
+            'project_image_paths'=> $projectImagePaths,
+            'demo_link'          => $validated['demo_link'] ?? null,
+            'status'             => 'pending',
+            'visibility'         => 'private',
         ]);
 
-        return response()->json(['data' => $submission], 201);
+        return response()->json(['data' => $submission->load('projectType')], 201);
     }
 
     public function updateReview(Request $request, ProjectSubmission $submission)
@@ -161,17 +216,17 @@ class ProjectSubmissionController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => 'required|in:approved,rejected,pending',
+            'status'         => 'required|in:approved,rejected,pending',
             'review_comment' => 'nullable|string',
         ]);
 
         $isPending = $validated['status'] === 'pending';
 
         $submission->update([
-            'status' => $validated['status'],
-            'review_comment' => $validated['review_comment'] ?? null,
+            'status'           => $validated['status'],
+            'review_comment'   => $validated['review_comment'] ?? null,
             'reviewed_by_role' => $isPending ? null : $user->role,
-            'reviewed_at' => $isPending ? null : now(),
+            'reviewed_at'      => $isPending ? null : now(),
         ]);
 
         return response()->json(['data' => $submission->fresh()]);
@@ -198,8 +253,19 @@ class ProjectSubmissionController extends Controller
     public function destroy(Request $request, ProjectSubmission $submission)
     {
         $user = $request->user();
-        if ($user->role !== 'assistant' && $user->role !== 'director') {
-            return response()->json(['message' => 'Only assistants and directors can delete submissions.'], 403);
+
+        // Members can delete any submission they are part of:
+        // either as the submitter (user_id) or as a tagged team member (team_member_ids)
+        if ($user->role === 'member') {
+            $teamMemberIds = $submission->team_member_ids ?? [];
+            $isMemberOfGroup = $submission->user_id === $user->id
+                || in_array($user->id, $teamMemberIds, true);
+
+            if (!$isMemberOfGroup) {
+                return response()->json(['message' => 'You are not a member of this project group.'], 403);
+            }
+        } elseif ($user->role !== 'assistant' && $user->role !== 'director') {
+            return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
         $paths = array_filter([

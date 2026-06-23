@@ -21,8 +21,7 @@ class UserController extends Controller
             ], 403);
         }
 
-        $members = User::where('role', 'member')
-            ->select('id', 'name', 'email', 'role', 'created_at')
+        $members = User::select('id', 'name', 'email', 'role', 'created_at')
             ->get();
 
         return response()->json([
@@ -90,11 +89,11 @@ class UserController extends Controller
             ], 403);
         }
 
-        $user = User::where('role', 'member')->find($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json([
-                'message' => 'Member not found'
+                'message' => 'User not found'
             ], 404);
         }
 
@@ -112,11 +111,11 @@ class UserController extends Controller
             ], 403);
         }
 
-        $user = User::where('role', 'member')->find($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json([
-                'message' => 'Member not found'
+                'message' => 'User not found'
             ], 404);
         }
 
@@ -128,6 +127,7 @@ class UserController extends Controller
                 Rule::unique('users', 'email')->ignore($id),
             ],
             'password' => 'sometimes|min:8|string',
+            'role' => 'sometimes|string|in:member,assistant,director',
         ]);
 
         if (isset($validated['password'])) {
@@ -137,7 +137,7 @@ class UserController extends Controller
         $user->update($validated);
 
         return response()->json([
-            'message' => 'Member updated successfully',
+            'message' => 'User updated successfully',
             'user' => $user
         ]);
     }
@@ -153,18 +153,18 @@ class UserController extends Controller
             ], 403);
         }
 
-        $user = User::where('role', 'member')->find($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json([
-                'message' => 'Member not found'
+                'message' => 'User not found'
             ], 404);
         }
 
         $user->delete();
 
         return response()->json([
-            'message' => 'Member deleted successfully'
+            'message' => 'User deleted successfully'
         ]);
     }
 }
