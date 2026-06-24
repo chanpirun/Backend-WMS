@@ -6,6 +6,7 @@ use App\Http\Controllers\ProjectSubmissionController;
 use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\TeamDocumentController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\NotificationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -47,6 +48,11 @@ Route::middleware('auth:sanctum')->post('/members', [UserController::class, 'sto
 Route::middleware('auth:sanctum')->get('/members/{id}', [UserController::class, 'show']);
 Route::middleware('auth:sanctum')->put('/members/{id}', [UserController::class, 'update']);
 Route::middleware('auth:sanctum')->delete('/members/{id}', [UserController::class, 'destroy']);
+
+// Notifications
+Route::middleware('auth:sanctum')->get('/notifications', [NotificationController::class, 'index']);
+Route::middleware('auth:sanctum')->post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+Route::middleware('auth:sanctum')->post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

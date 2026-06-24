@@ -14,20 +14,20 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(
-            ['email' => 'assistant@gmail.com'],
-            [
-                'name' => 'Admin Assistant',
-                'password' => bcrypt('assistant123'),
-                'role' => 'assistant',
-            ]
-        );
-
-        User::updateOrCreate(
-            ['email' => 'director@gmail.com'],
+            ['email' => 'Director@gmail.com'],
             [
                 'name' => 'Admin Director',
                 'password' => bcrypt('director123'),
                 'role' => 'director',
+            ]
+        );
+
+        User::updateOrCreate(
+            ['email' => 'Assistant@gmail.com'],
+            [
+                'name' => 'Admin Assistant',
+                'password' => bcrypt('Assistant123'),
+                'role' => 'assistant',
             ]
         );
 

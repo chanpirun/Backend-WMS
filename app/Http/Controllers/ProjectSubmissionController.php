@@ -103,7 +103,7 @@ class ProjectSubmissionController extends Controller
             'source_code'    => 'required',
             'source_code.*'  => 'file|mimes:zip|max:102400',
             'dataset'        => 'required',
-            'dataset.*'      => 'file|mimes:csv,json,xlsx,xls,zip|max:102400',
+            'dataset.*'      => 'file|mimes:csv,json,xlsx,xls,zip,sql,db,txt|max:102400',
             'project_images' => 'nullable|array',
             'project_images.*'=> 'file|mimes:pdf,doc,docx,ppt,pptx,txt|max:10240',
             'demo_link'      => 'nullable|url|max:2048',
@@ -205,6 +205,9 @@ class ProjectSubmissionController extends Controller
             'visibility'         => 'private',
         ]);
 
+        $admins = \App\Models\User::whereIn('role', ['assistant', 'director'])->get();
+        \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\ProjectSubmitted($submission));
+
         return response()->json(['data' => $submission->load('projectType')], 201);
     }
 
@@ -228,6 +231,13 @@ class ProjectSubmissionController extends Controller
             'reviewed_by_role' => $isPending ? null : $user->role,
             'reviewed_at'      => $isPending ? null : now(),
         ]);
+
+        if (!$isPending) {
+            $submitter = $submission->user;
+            if ($submitter) {
+                $submitter->notify(new \App\Notifications\ProjectReviewed($submission));
+            }
+        }
 
         return response()->json(['data' => $submission->fresh()]);
     }
