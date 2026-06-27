@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\ProjectSubmission;
+use App\Mail\MemberInvitationMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -166,5 +170,63 @@ class UserController extends Controller
         return response()->json([
             'message' => 'User deleted successfully'
         ]);
+    }
+
+    /**
+     * Invite a friend by email to Group Hub and automatically add them to the inviter's project submissions.
+     */
+    public function invite(Request $request)
+    {
+        $inviter = $request->user();
+
+        $validated = $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+
+        // Check if user already exists
+        $user = User::where('email', $email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'User with this email not found. They must register first.'
+            ], 404);
+        }
+
+        // Find all project submissions where the inviter is the owner
+        $submissions = ProjectSubmission::where('user_id', $inviter->id)->get();
+
+        foreach ($submissions as $submission) {
+            $ids = $submission->team_member_ids ?? [];
+            $names = $submission->team_members ?? [];
+
+            if (!in_array($user->id, $ids)) {
+                $ids[] = $user->id;
+                $names[] = $user->name;
+
+                $submission->update([
+                    'team_member_ids' => $ids,
+                    'team_members' => $names,
+                    'owner_type' => 'team',
+                    'owner_name' => $submission->owner_name . ' / ' . $user->name
+                ]);
+            }
+        }
+
+        try {
+            Mail::to($email)->send(new MemberInvitationMail($inviter, $user, null));
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Member added to projects, but invitation email failed to send.',
+                'error' => $e->getMessage(),
+                'user' => $user
+            ], 200);
+        }
+
+        return response()->json([
+            'message' => 'Member added to your projects and invitation email sent successfully.',
+            'user' => $user
+        ], 200);
     }
 }

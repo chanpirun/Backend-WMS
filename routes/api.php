@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->post('/members', [UserController::class, 'sto
 Route::middleware('auth:sanctum')->get('/members/{id}', [UserController::class, 'show']);
 Route::middleware('auth:sanctum')->put('/members/{id}', [UserController::class, 'update']);
 Route::middleware('auth:sanctum')->delete('/members/{id}', [UserController::class, 'destroy']);
+Route::middleware('auth:sanctum')->post('/members/invite', [UserController::class, 'invite']);
 
 // Notifications
 Route::middleware('auth:sanctum')->get('/notifications', [NotificationController::class, 'index']);
