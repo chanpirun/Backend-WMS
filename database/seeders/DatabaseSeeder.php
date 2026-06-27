@@ -39,5 +39,7 @@ class DatabaseSeeder extends Seeder
                 'role' => 'member',
             ]
         );
+
+        $this->call(ProjectTypeSeeder::class);
     }
 }
