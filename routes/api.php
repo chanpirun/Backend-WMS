@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 // Public auth routes — rate limited to prevent brute-force
 // throttle:5,1  → 5 requests per 1 minute per IP
 // ─────────────────────────────────────────────────────────────────────────────
-Route::middleware('throttle:5,1')->group(function () {
+Route::middleware('throttle:60,1')->group(function () {
     Route::post('/login',          [AuthController::class, 'login']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
