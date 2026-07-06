@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use App\Mail\PasswordResetMail;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -117,7 +119,14 @@ class AuthController extends Controller
             ]
         );
 
-        // TODO: Send OTP via email (Mail::to($request->email)->send(new PasswordResetMail($otp)));
+        try {
+            Mail::to($request->email)->send(new PasswordResetMail($otp));
+        } catch (\Exception $e) {
+            Log::error('Failed to send password reset email', [
+                'email' => $request->email,
+                'error' => $e->getMessage()
+            ]);
+        }
 
         Log::info('Password reset requested', ['email' => $request->email, 'ip' => $request->ip()]);
 
