@@ -51,6 +51,15 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        User::updateOrCreate(
+            ['email' => 'lunalyminho@gmail.com'],
+            [
+                'name' => 'Luna Test User',
+                'password' => bcrypt($memberPassword),
+                'role' => 'member',
+            ]
+        );
+
         $this->call(ProjectTypeSeeder::class);
     }
 }
