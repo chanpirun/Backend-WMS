@@ -26,6 +26,16 @@ Route::middleware('throttle:60,1')->group(function () {
 // Register — separate, slightly higher limit (10/min) to allow usability
 Route::middleware('throttle:10,1')->post('/register', [AuthController::class, 'register']);
 
+// Diagnostic route for upload limits
+Route::get('/debug-upload-limits', function () {
+    return response()->json([
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
+        'post_max_size'       => ini_get('post_max_size'),
+        'memory_limit'        => ini_get('memory_limit'),
+        'loaded_ini_file'     => php_ini_loaded_file(),
+    ]);
+});
+
 // Logout requires auth
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
