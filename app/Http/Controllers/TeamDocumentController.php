@@ -45,14 +45,34 @@ class TeamDocumentController extends Controller
             'description'         => 'nullable|string|max:2000',
             'tagged_member_ids'   => 'nullable|string',   // JSON-encoded array
             'tagged_member_names' => 'nullable|string',   // JSON-encoded array
-            'manual_doc'          => 'nullable|file|max:102400',
-            'source_code'         => 'nullable|file|max:102400',
-            'database_file'       => 'nullable|file|max:102400',
-            'final_doc'           => 'nullable|file|max:102400',
+            'manual_doc'          => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'source_code'         => 'nullable|file|mimes:zip|max:102400',
+            'database_file'       => 'nullable|file|mimes:csv,json,xlsx,xls,zip,sql,db,txt|max:102400',
+            'final_doc'           => 'nullable|file|mimes:pdf,doc,docx,ppt,pptx,txt|max:10240',
         ]);
 
         $user   = $request->user();
         $folder = 'team_documents/' . uniqid();
+
+        // Decode and validate tagged member arrays
+        $taggedIds = [];
+        if ($request->input('tagged_member_ids')) {
+            $decoded = json_decode($request->input('tagged_member_ids'), true);
+            if (is_array($decoded)) {
+                $taggedIds = array_values(array_filter(array_map('intval', $decoded)));
+            }
+        }
+
+        if (!empty($taggedIds)) {
+            $validUserCount = \App\Models\User::whereIn('id', $taggedIds)->count();
+            if ($validUserCount !== count($taggedIds)) {
+                return response()->json(['message' => 'One or more tagged member IDs are invalid.'], 422);
+            }
+            $hasDirectors = \App\Models\User::whereIn('id', $taggedIds)->where('role', 'director')->exists();
+            if ($hasDirectors) {
+                return response()->json(['message' => 'Cannot tag directors in team documents.'], 422);
+            }
+        }
 
         // Helper to store a file and return [path, name]
         $storeFile = function (string $inputName) use ($request, $folder): array {
@@ -69,10 +89,6 @@ class TeamDocumentController extends Controller
         [$dbPath,     $dbName]       = $storeFile('database_file');
         [$finalPath,  $finalName]    = $storeFile('final_doc');
 
-        // Decode tagged member arrays sent as JSON strings
-        $taggedIds   = $request->input('tagged_member_ids')
-            ? json_decode($request->input('tagged_member_ids'), true)
-            : [];
         $taggedNames = $request->input('tagged_member_names')
             ? json_decode($request->input('tagged_member_names'), true)
             : [];

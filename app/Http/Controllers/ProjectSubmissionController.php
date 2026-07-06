@@ -128,6 +128,19 @@ class ProjectSubmissionController extends Controller
             }
         }
 
+        // SECURITY VULN-019: Validate that all team member IDs are valid non-director users
+        if (!empty($teamMemberIds)) {
+            $validUserCount = \App\Models\User::whereIn('id', $teamMemberIds)->count();
+            if ($validUserCount !== count($teamMemberIds)) {
+                return response()->json(['message' => 'One or more team member IDs are invalid.'], 422);
+            }
+            $hasDirectors = \App\Models\User::whereIn('id', $teamMemberIds)->where('role', 'director')->exists();
+            if ($hasDirectors) {
+                return response()->json(['message' => 'Cannot add directors as team members.'], 422);
+            }
+        }
+
+
         $coverFile = $request->file('cover_image');
         $coverImagePath = $coverFile->storeAs(
             'submissions/covers/' . uniqid(),
@@ -264,15 +277,10 @@ class ProjectSubmissionController extends Controller
     {
         $user = $request->user();
 
-        // Members can delete any submission they are part of:
-        // either as the submitter (user_id) or as a tagged team member (team_member_ids)
+        // SECURITY VULN-012: Only the original submitter (owner) can delete
         if ($user->role === 'member') {
-            $teamMemberIds = $submission->team_member_ids ?? [];
-            $isMemberOfGroup = $submission->user_id === $user->id
-                || in_array($user->id, $teamMemberIds, true);
-
-            if (!$isMemberOfGroup) {
-                return response()->json(['message' => 'You are not a member of this project group.'], 403);
+            if ($submission->user_id !== $user->id) {
+                return response()->json(['message' => 'Only the project owner can delete this submission.'], 403);
             }
         } elseif ($user->role !== 'assistant' && $user->role !== 'director') {
             return response()->json(['message' => 'Unauthorized.'], 403);

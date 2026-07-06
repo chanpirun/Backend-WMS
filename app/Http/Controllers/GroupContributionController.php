@@ -67,8 +67,15 @@ class GroupContributionController extends Controller
 
         $validated = $request->validate([
             'category' => 'required|string|in:manuscript,frontend,backend,database,postman',
-            'file'     => 'required|file|max:102400', // 100MB max
+            // SECURITY: explicit MIME whitelist — no PHP, no executables, no HTML
+            'file'     => [
+                'required',
+                'file',
+                'max:102400',
+                'mimes:pdf,doc,docx,ppt,pptx,txt,zip,csv,xlsx,xls,png,jpg,jpeg,webp,sql,json',
+            ],
         ]);
+
 
         $file = $request->file('file');
         $filePath = $file->storeAs(

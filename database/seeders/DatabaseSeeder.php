@@ -13,29 +13,40 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $directorEmail = env('SEED_DIRECTOR_EMAIL');
+        $directorPassword = env('SEED_DIRECTOR_PASSWORD');
+        $assistantEmail = env('SEED_ASST_EMAIL');
+        $assistantPassword = env('SEED_ASST_PASSWORD');
+        $memberEmail = env('SEED_MEMBER_EMAIL');
+        $memberPassword = env('SEED_MEMBER_PASSWORD');
+
+        if (!$directorEmail || !$directorPassword || !$assistantEmail || !$assistantPassword || !$memberEmail || !$memberPassword) {
+            throw new \Exception("Seeding failed: Please configure SEED_DIRECTOR_EMAIL, SEED_DIRECTOR_PASSWORD, SEED_ASST_EMAIL, SEED_ASST_PASSWORD, SEED_MEMBER_EMAIL, and SEED_MEMBER_PASSWORD in your .env file.");
+        }
+
         User::updateOrCreate(
-            ['email' => 'Director@gmail.com'],
+            ['email' => $directorEmail],
             [
                 'name' => 'Admin Director',
-                'password' => bcrypt('director123'),
+                'password' => bcrypt($directorPassword),
                 'role' => 'director',
             ]
         );
 
         User::updateOrCreate(
-            ['email' => 'Assistant@gmail.com'],
+            ['email' => $assistantEmail],
             [
                 'name' => 'Admin Assistant',
-                'password' => bcrypt('Assistant123'),
+                'password' => bcrypt($assistantPassword),
                 'role' => 'assistant',
             ]
         );
 
         User::updateOrCreate(
-            ['email' => 'member01@email.com'],
+            ['email' => $memberEmail],
             [
                 'name' => 'Member User',
-                'password' => bcrypt('password123'),
+                'password' => bcrypt($memberPassword),
                 'role' => 'member',
             ]
         );

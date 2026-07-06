@@ -24,6 +24,11 @@ class ProjectTypeController extends Controller
      */
     public function store(Request $request)
     {
+        // SECURITY VULN-014: Only assistant and director can create project types
+        if (!in_array($request->user()->role, ['assistant', 'director'])) {
+            return response()->json(['message' => 'Only administrators can create project types.'], 403);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:100|unique:project_types,name',
         ]);

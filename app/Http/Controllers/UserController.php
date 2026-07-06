@@ -7,6 +7,7 @@ use App\Models\ProjectSubmission;
 use App\Mail\MemberInvitationMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -58,27 +59,31 @@ class UserController extends Controller
 
         try {
             $user = User::create([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
+                'name'     => $validated['name'],
+                'email'    => $validated['email'],
                 'password' => Hash::make($validated['password']),
-                'role' => 'member',
+                'role'     => 'member',
+            ]);
+
+            Log::info('Member created by director', [
+                'created_by' => $request->user()->id,
+                'new_user'   => $user->id,
             ]);
 
             return response()->json([
                 'message' => 'Member recruited successfully',
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role,
+                'user'    => [
+                    'id'         => $user->id,
+                    'name'       => $user->name,
+                    'email'      => $user->email,
+                    'role'       => $user->role,
                     'created_at' => $user->created_at,
                 ]
             ], 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error creating member',
-                'error' => $e->getMessage()
-            ], 500);
+            // SECURITY: never expose raw exception messages to the client
+            Log::error('Member creation failed', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'An internal error occurred.'], 500);
         }
     }
 
@@ -109,29 +114,29 @@ class UserController extends Controller
      */
     public function update(Request $request, $id)
     {
-        if ($request->user()->role !== 'director') {
-            return response()->json([
-                'message' => 'Unauthorized'
-            ], 403);
+        $currentUser = $request->user();
+
+        if ($currentUser->role !== 'director') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // SECURITY: Directors cannot change their own role
+        if ((int) $id === $currentUser->id) {
+            return response()->json(['message' => 'You cannot modify your own account through this endpoint.'], 403);
         }
 
         $user = User::find($id);
 
         if (!$user) {
-            return response()->json([
-                'message' => 'User not found'
-            ], 404);
+            return response()->json(['message' => 'User not found'], 404);
         }
 
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'email' => [
-                'sometimes',
-                'email',
-                Rule::unique('users', 'email')->ignore($id),
-            ],
+            'name'     => 'sometimes|string|max:255',
+            'email'    => ['sometimes', 'email', Rule::unique('users', 'email')->ignore($id)],
             'password' => 'sometimes|min:8|string',
-            'role' => 'sometimes|string|in:member,assistant,director',
+            // SECURITY: 'director' is excluded — directors cannot promote others to director via API
+            'role'     => 'sometimes|string|in:member,assistant',
         ]);
 
         if (isset($validated['password'])) {
@@ -140,9 +145,20 @@ class UserController extends Controller
 
         $user->update($validated);
 
+        Log::info('User role/info updated', [
+            'updated_by' => $currentUser->id,
+            'target_user' => $user->id,
+            'changes' => array_keys($validated),
+        ]);
+
         return response()->json([
             'message' => 'User updated successfully',
-            'user' => $user
+            'user'    => [
+                'id'    => $user->id,
+                'name'  => $user->name,
+                'email' => $user->email,
+                'role'  => $user->role,
+            ]
         ]);
     }
 
@@ -151,25 +167,38 @@ class UserController extends Controller
      */
     public function destroy(Request $request, $id)
     {
-        if ($request->user()->role !== 'director') {
-            return response()->json([
-                'message' => 'Unauthorized'
-            ], 403);
+        $currentUser = $request->user();
+
+        if ($currentUser->role !== 'director') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // SECURITY: Cannot delete your own account
+        if ((int) $id === $currentUser->id) {
+            return response()->json(['message' => 'You cannot delete your own account.'], 403);
         }
 
         $user = User::find($id);
 
         if (!$user) {
-            return response()->json([
-                'message' => 'User not found'
-            ], 404);
+            return response()->json(['message' => 'User not found'], 404);
         }
 
+        // SECURITY: Cannot delete other director accounts
+        if ($user->role === 'director') {
+            return response()->json(['message' => 'Director accounts cannot be deleted through this endpoint.'], 403);
+        }
+
+        Log::info('User deleted', [
+            'deleted_by'  => $currentUser->id,
+            'target_user' => $user->id,
+            'target_role' => $user->role,
+        ]);
+
+        $user->tokens()->delete(); // revoke all sessions before deleting
         $user->delete();
 
-        return response()->json([
-            'message' => 'User deleted successfully'
-        ]);
+        return response()->json(['message' => 'User deleted successfully']);
     }
 
     /**
@@ -178,6 +207,11 @@ class UserController extends Controller
     public function invite(Request $request)
     {
         $inviter = $request->user();
+
+        // SECURITY VULN-013: Add explicit role check
+        if ($inviter->role !== 'member' && $inviter->role !== 'director') {
+            return response()->json(['message' => 'Only members and directors can invite others.'], 403);
+        }
 
         $validated = $request->validate([
             'email' => 'required|email',

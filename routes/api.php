@@ -11,55 +11,80 @@ use App\Http\Controllers\UploadController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/reset-password', [AuthController::class, 'resetPassword']);
-Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+// ─────────────────────────────────────────────────────────────────────────────
+// Public auth routes — rate limited to prevent brute-force
+// throttle:5,1  → 5 requests per 1 minute per IP
+// ─────────────────────────────────────────────────────────────────────────────
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/login',          [AuthController::class, 'login']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+});
 
+// Register — separate, slightly higher limit (10/min) to allow usability
+Route::middleware('throttle:10,1')->post('/register', [AuthController::class, 'register']);
+
+// Logout requires auth
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
-// Public route — no auth required, returns only public submissions
-Route::get('/public/submissions', [ProjectSubmissionController::class, 'publicIndex']);
+// ─────────────────────────────────────────────────────────────────────────────
+// Public route — no auth required, rate limited to 60/min
+// ─────────────────────────────────────────────────────────────────────────────
+Route::middleware('throttle:60,1')->get('/public/submissions', [ProjectSubmissionController::class, 'publicIndex']);
 
-// Project submissions
-Route::middleware('auth:sanctum')->get('/submissions', [ProjectSubmissionController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/submissions', [ProjectSubmissionController::class, 'store']);
-Route::middleware('auth:sanctum')->patch('/submissions/{submission}/review', [ProjectSubmissionController::class, 'updateReview']);
-Route::middleware('auth:sanctum')->patch('/submissions/{submission}/visibility', [ProjectSubmissionController::class, 'updateVisibility']);
-Route::middleware('auth:sanctum')->delete('/submissions/{submission}', [ProjectSubmissionController::class, 'destroy']);
+// ─────────────────────────────────────────────────────────────────────────────
+// All protected routes — require Sanctum token and rate limited to 60/min
+// ─────────────────────────────────────────────────────────────────────────────
+Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
-// Group contributions (linked to project submissions)
-Route::middleware('auth:sanctum')->get('/contributions', [GroupContributionController::class, 'indexAll']);
-Route::middleware('auth:sanctum')->get('/submissions/{submission}/contributions', [GroupContributionController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/submissions/{submission}/contributions', [GroupContributionController::class, 'store']);
-Route::middleware('auth:sanctum')->delete('/contributions/{contribution}', [GroupContributionController::class, 'destroy']);
+    // Current authenticated user (minimal fields)
+    Route::get('/user', function (Request $request) {
+        $u = $request->user();
+        return response()->json([
+            'id'    => $u->id,
+            'name'  => $u->name,
+            'email' => $u->email,
+            'role'  => $u->role,
+        ]);
+    });
 
-// Team documents — standalone contributions, visible to submitter + tagged members
-Route::middleware('auth:sanctum')->get('/team-documents', [TeamDocumentController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/team-documents', [TeamDocumentController::class, 'store']);
-Route::middleware('auth:sanctum')->delete('/team-documents/{teamDocument}', [TeamDocumentController::class, 'destroy']);
+    // Project submissions
+    Route::get('/submissions',                                    [ProjectSubmissionController::class, 'index']);
+    Route::post('/submissions',                                   [ProjectSubmissionController::class, 'store']);
+    Route::patch('/submissions/{submission}/review',              [ProjectSubmissionController::class, 'updateReview']);
+    Route::patch('/submissions/{submission}/visibility',          [ProjectSubmissionController::class, 'updateVisibility']);
+    Route::delete('/submissions/{submission}',                    [ProjectSubmissionController::class, 'destroy']);
 
-// Project types (list + create custom)
-Route::middleware('auth:sanctum')->get('/project-types', [ProjectTypeController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/project-types', [ProjectTypeController::class, 'store']);
+    // Group contributions (linked to project submissions)
+    Route::get('/contributions',                                  [GroupContributionController::class, 'indexAll']);
+    Route::get('/submissions/{submission}/contributions',         [GroupContributionController::class, 'index']);
+    Route::post('/submissions/{submission}/contributions',        [GroupContributionController::class, 'store']);
+    Route::delete('/contributions/{contribution}',                [GroupContributionController::class, 'destroy']);
 
-// User/Member management endpoints (directors only)
-Route::middleware('auth:sanctum')->get('/members', [UserController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/members', [UserController::class, 'store']);
-Route::middleware('auth:sanctum')->get('/members/{id}', [UserController::class, 'show']);
-Route::middleware('auth:sanctum')->put('/members/{id}', [UserController::class, 'update']);
-Route::middleware('auth:sanctum')->delete('/members/{id}', [UserController::class, 'destroy']);
-Route::middleware('auth:sanctum')->post('/members/invite', [UserController::class, 'invite']);
+    // Team documents
+    Route::get('/team-documents',                                 [TeamDocumentController::class, 'index']);
+    Route::post('/team-documents',                                [TeamDocumentController::class, 'store']);
+    Route::delete('/team-documents/{teamDocument}',               [TeamDocumentController::class, 'destroy']);
 
-// Notifications
-Route::middleware('auth:sanctum')->get('/notifications', [NotificationController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
-Route::middleware('auth:sanctum')->post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    // Project types
+    Route::get('/project-types',                                  [ProjectTypeController::class, 'index']);
+    Route::post('/project-types',                                 [ProjectTypeController::class, 'store']);
 
-Route::middleware('auth:sanctum')->post('/upload', [UploadController::class, 'upload']);
+    // User/Member management — role checks enforced inside controllers
+    Route::get('/members',                                        [UserController::class, 'index']);
+    Route::post('/members',                                       [UserController::class, 'store']);
+    Route::get('/members/{id}',                                   [UserController::class, 'show']);
+    Route::put('/members/{id}',                                   [UserController::class, 'update']);
+    Route::delete('/members/{id}',                                [UserController::class, 'destroy']);
+    Route::post('/members/invite',                                [UserController::class, 'invite']);
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+    // Notifications
+    Route::get('/notifications',                                  [NotificationController::class, 'index']);
+    Route::post('/notifications/mark-all-read',                   [NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/{id}/read',                       [NotificationController::class, 'markAsRead']);
+
+    // File uploads
+    Route::post('/upload',                                        [UploadController::class, 'upload']);
 });

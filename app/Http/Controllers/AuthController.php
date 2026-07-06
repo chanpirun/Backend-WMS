@@ -6,19 +6,26 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
     public function login(Request $request)
     {
         $credentials = $request->validate([
-            'email' => 'required|email',
+            'email'    => 'required|email',
             'password' => 'required',
         ]);
 
         $user = User::where('email', $credentials['email'])->first();
 
         if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            // Log failed login attempt — never expose which field was wrong
+            Log::warning('Failed login attempt', [
+                'email' => $credentials['email'],
+                'ip'    => $request->ip(),
+                'ua'    => $request->userAgent(),
+            ]);
             return response()->json([
                 'message' => 'Invalid credentials'
             ], 401);
@@ -26,37 +33,66 @@ class AuthController extends Controller
 
         if (!method_exists($user, 'createToken')) {
             return response()->json([
-                'message' => 'Token generation is unavailable. Please install/configure Laravel Sanctum and ensure HasApiTokens is used on User model.'
+                'message' => 'Token generation is unavailable.'
             ], 500);
         }
 
+        // Log successful login
+        Log::info('User logged in', [
+            'user_id' => $user->id,
+            'role'    => $user->role,
+            'ip'      => $request->ip(),
+        ]);
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        // Return only safe user fields — never the full model
         return response()->json([
             'token' => $token,
-            'user' => $user,
+            'user'  => [
+                'id'    => $user->id,
+                'name'  => $user->name,
+                'email' => $user->email,
+                'role'  => $user->role,
+            ],
         ]);
     }
 
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6',
-            'role' => 'required|in:assistant,director,member',
+            'name'     => 'required|string|max:255',
+            'email'    => 'required|email|unique:users,email',
+            // SECURITY: minimum 8 chars, confirmation required
+            'password' => 'required|min:8|confirmed',
+            // SECURITY: role is NOT accepted from client — always default to member
         ]);
 
-        $user = User::create($validated);
+        $user = User::create([
+            'name'     => $validated['name'],
+            'email'    => $validated['email'],
+            'password' => $validated['password'], // hashed via model cast
+            'role'     => 'member',               // hardcoded — never trust client
+        ]);
+
+        Log::info('New user registered', ['user_id' => $user->id, 'ip' => $request->ip()]);
 
         return response()->json([
-            'user' => $user,
+            'user' => [
+                'id'    => $user->id,
+                'name'  => $user->name,
+                'email' => $user->email,
+                'role'  => $user->role,
+            ],
         ], 201);
     }
 
     public function logout(Request $request)
     {
+        $user = $request->user();
         $request->user()->currentAccessToken()->delete();
+
+        Log::info('User logged out', ['user_id' => $user->id, 'ip' => $request->ip()]);
 
         return response()->json([
             'message' => 'Logged out'
@@ -69,28 +105,33 @@ class AuthController extends Controller
             'email' => 'required|email|exists:users,email',
         ]);
 
-        $otp = (string) mt_rand(100000, 999999);
+        // SECURITY: use cryptographically secure random_int() — NOT mt_rand()
+        $otp = (string) random_int(100000, 999999);
 
-        // Store OTP in database
+        // SECURITY: store HASHED OTP — never plaintext
         DB::table('password_reset_tokens')->updateOrInsert(
             ['email' => $request->email],
             [
-                'token' => $otp,
+                'token'      => Hash::make($otp),
                 'created_at' => now(),
             ]
         );
 
+        // TODO: Send OTP via email (Mail::to($request->email)->send(new PasswordResetMail($otp)));
+
+        Log::info('Password reset requested', ['email' => $request->email, 'ip' => $request->ip()]);
+
+        // SECURITY: NEVER return OTP in the API response — not even under debug_code
         return response()->json([
-            'message' => 'Verification code sent successfully.',
-            'debug_code' => $otp, // Return for local testing/grading
+            'message' => 'If that email exists, a verification code has been sent.',
         ]);
     }
 
     public function resetPassword(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:users,email',
-            'code' => 'required|string',
+            'email'    => 'required|email|exists:users,email',
+            'code'     => 'required|string',
             'password' => 'required|min:8|confirmed',
         ]);
 
@@ -98,7 +139,18 @@ class AuthController extends Controller
             ->where('email', $request->email)
             ->first();
 
-        if (!$record || $record->token !== $request->code) {
+        if (!$record) {
+            return response()->json([
+                'message' => 'Invalid or expired verification code.'
+            ], 422);
+        }
+
+        // SECURITY: verify OTP via Hash::check() — hashed comparison
+        if (!Hash::check($request->code, $record->token)) {
+            Log::warning('Invalid OTP attempt during password reset', [
+                'email' => $request->email,
+                'ip'    => $request->ip(),
+            ]);
             return response()->json([
                 'message' => 'Invalid or expired verification code.'
             ], 422);
@@ -113,13 +165,17 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Update password
         $user = User::where('email', $request->email)->first();
         $user->password = Hash::make($request->password);
         $user->save();
 
-        // Clear token
+        // SECURITY: revoke ALL existing tokens so stolen sessions are invalidated
+        $user->tokens()->delete();
+
+        // Clear OTP
         DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+        Log::info('Password reset successful', ['user_id' => $user->id, 'ip' => $request->ip()]);
 
         return response()->json([
             'message' => 'Password has been reset successfully.'
