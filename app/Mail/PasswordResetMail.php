@@ -12,14 +12,19 @@ class PasswordResetMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $otp;
+    public $token;
+    public $email;
+    public $resetLink;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($otp)
+    public function __construct($token, $email)
     {
-        $this->otp = $otp;
+        $this->token = $token;
+        $this->email = $email;
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+        $this->resetLink = "{$frontendUrl}?token={$token}&email=" . urlencode($email);
     }
 
     /**
@@ -28,7 +33,7 @@ class PasswordResetMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'RaDiCe Account Password Reset Code',
+            subject: 'RaDiCe Account Password Reset Link',
         );
     }
 

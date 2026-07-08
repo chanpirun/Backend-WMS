@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\Route;
 // ─────────────────────────────────────────────────────────────────────────────
 Route::middleware('throttle:60,1')->group(function () {
     Route::post('/login',          [AuthController::class, 'login']);
+});
+
+Route::middleware('throttle:5,1')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);

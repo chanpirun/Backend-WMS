@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -104,35 +105,39 @@ class AuthController extends Controller
     public function forgotPassword(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:users,email',
+            'email' => 'required|email',
         ]);
 
-        // SECURITY: use cryptographically secure random_int() — NOT mt_rand()
-        $otp = (string) random_int(100000, 999999);
+        $email = $request->email;
+        $user = User::where('email', $email)->first();
 
-        // SECURITY: store HASHED OTP — never plaintext
-        DB::table('password_reset_tokens')->updateOrInsert(
-            ['email' => $request->email],
-            [
-                'token'      => Hash::make($otp),
-                'created_at' => now(),
-            ]
-        );
+        if ($user) {
+            // SECURITY: generate a 60-character cryptographically secure token
+            $token = Str::random(60);
 
-        try {
-            Mail::to($request->email)->send(new PasswordResetMail($otp));
-        } catch (\Exception $e) {
-            Log::error('Failed to send password reset email', [
-                'email' => $request->email,
-                'error' => $e->getMessage()
-            ]);
+            // SECURITY: store HASHED token — never plaintext
+            DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $email],
+                [
+                    'token'      => Hash::make($token),
+                    'created_at' => now(),
+                ]
+            );
+
+            try {
+                Mail::to($email)->send(new PasswordResetMail($token, $email));
+            } catch (\Exception $e) {
+                Log::error('Failed to send password reset email', [
+                    'email' => $email,
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
 
-        Log::info('Password reset requested', ['email' => $request->email, 'ip' => $request->ip()]);
+        Log::info('Password reset requested', ['email' => $email, 'ip' => $request->ip()]);
 
-        // SECURITY: NEVER return OTP in the API response — not even under debug_code
         return response()->json([
-            'message' => 'If that email exists, a verification code has been sent.',
+            'message' => 'If that email exists, a password reset link has been sent.',
         ]);
     }
 
@@ -140,9 +145,12 @@ class AuthController extends Controller
     {
         $request->validate([
             'email'    => 'required|email|exists:users,email',
-            'code'     => 'required|string',
+            'token'    => 'required_without:code|string',
+            'code'     => 'required_without:token|string',
             'password' => 'required|min:8|confirmed',
         ]);
+
+        $token = $request->input('token') ?? $request->input('code');
 
         $record = DB::table('password_reset_tokens')
             ->where('email', $request->email)
@@ -150,18 +158,18 @@ class AuthController extends Controller
 
         if (!$record) {
             return response()->json([
-                'message' => 'Invalid or expired verification code.'
+                'message' => 'Invalid or expired reset token.'
             ], 422);
         }
 
-        // SECURITY: verify OTP via Hash::check() — hashed comparison
-        if (!Hash::check($request->code, $record->token)) {
-            Log::warning('Invalid OTP attempt during password reset', [
+        // SECURITY: verify token via Hash::check() — hashed comparison
+        if (!Hash::check($token, $record->token)) {
+            Log::warning('Invalid token attempt during password reset', [
                 'email' => $request->email,
                 'ip'    => $request->ip(),
             ]);
             return response()->json([
-                'message' => 'Invalid or expired verification code.'
+                'message' => 'Invalid or expired reset token.'
             ], 422);
         }
 
@@ -170,7 +178,7 @@ class AuthController extends Controller
         if ($createdAt->addMinutes(15)->isPast()) {
             DB::table('password_reset_tokens')->where('email', $request->email)->delete();
             return response()->json([
-                'message' => 'Verification code has expired.'
+                'message' => 'Reset token has expired.'
             ], 422);
         }
 
@@ -181,7 +189,7 @@ class AuthController extends Controller
         // SECURITY: revoke ALL existing tokens so stolen sessions are invalidated
         $user->tokens()->delete();
 
-        // Clear OTP
+        // Clear token
         DB::table('password_reset_tokens')->where('email', $request->email)->delete();
 
         Log::info('Password reset successful', ['user_id' => $user->id, 'ip' => $request->ip()]);
