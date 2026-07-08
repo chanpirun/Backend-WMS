@@ -306,6 +306,10 @@ class ProjectSubmissionController extends Controller
             Storage::disk('public')->delete($path);
         }
 
+        foreach ($submission->contributions as $contribution) {
+            $contribution->delete();
+        }
+
         $submission->delete();
 
         return response()->json(['message' => 'Submission deleted successfully.']);

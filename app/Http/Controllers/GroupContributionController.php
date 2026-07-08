@@ -17,7 +17,7 @@ class GroupContributionController extends Controller
             return true;
         }
 
-        $teamMemberIds = $submission->team_member_ids ?? [];
+        $teamMemberIds = is_array($submission->team_member_ids) ? $submission->team_member_ids : [];
         return $submission->user_id === $user->id || in_array($user->id, $teamMemberIds, true);
     }
 

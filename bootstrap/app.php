@@ -19,6 +19,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToGroup('api', \App\Http\Middleware\ExtractTokenFromCookie::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->report(function (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Uncaught Exception', [
+                'message'   => $e->getMessage(),
+                'file'      => $e->getFile(),
+                'line'      => $e->getLine(),
+                'url'       => request()->fullUrl(),
+                'method'    => request()->method(),
+                'user_id'   => auth()->id(),
+                'payload'   => request()->except(['password', 'password_confirmation']),
+                'trace'     => $e->getTraceAsString(),
+            ]);
+        });
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([

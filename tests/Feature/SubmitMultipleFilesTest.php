@@ -108,4 +108,66 @@ class SubmitMultipleFilesTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonPath('email', $user->email);
     }
+
+    public function test_delete_submission_cascades_and_deletes_contribution_files(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $user = User::factory()->create([
+            'role' => 'member',
+        ]);
+
+        $projectType = ProjectType::firstOrCreate(['name' => 'Web App']);
+
+        Sanctum::actingAs($user);
+
+        // 1. Create a submission
+        $subResponse = $this->post('/api/submissions', [
+            'title' => 'Test Project for Cascade Delete',
+            'tags' => 'tag1, tag2',
+            'project_type_id' => $projectType->id,
+            'owner_type' => 'individual',
+            'description' => 'Test description',
+            'cover_image' => UploadedFile::fake()->image('cover.jpg'),
+            'document' => [
+                UploadedFile::fake()->create('doc1.pdf', 100),
+            ],
+            'source_code' => [
+                UploadedFile::fake()->create('source1.zip', 100),
+            ],
+            'dataset' => [
+                UploadedFile::fake()->create('dataset1.csv', 100),
+            ],
+        ]);
+
+        $subResponse->assertStatus(201);
+        $submissionId = $subResponse->json('data.id');
+
+        // 2. Add a contribution with file
+        $conResponse = $this->post("/api/submissions/{$submissionId}/contributions", [
+            'category' => 'manuscript',
+            'file' => UploadedFile::fake()->create('contribution_manuscript.pdf', 100),
+        ]);
+
+        $conResponse->assertStatus(201);
+        $contributionId = $conResponse->json('data.id');
+        $contribution = \App\Models\GroupContribution::find($contributionId);
+        $contributionFilePath = $contribution->file_path;
+
+        // Verify contribution file exists in storage
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($contributionFilePath);
+
+        // 3. Delete the project submission
+        $delResponse = $this->delete("/api/submissions/{$submissionId}");
+        $delResponse->assertStatus(200);
+
+        // Verify project submission is deleted
+        $this->assertNull(\App\Models\ProjectSubmission::find($submissionId));
+
+        // Verify related group contribution is deleted
+        $this->assertNull(\App\Models\GroupContribution::find($contributionId));
+
+        // Verify contribution file is deleted from disk
+        \Illuminate\Support\Facades\Storage::disk('public')->assertMissing($contributionFilePath);
+    }
 }

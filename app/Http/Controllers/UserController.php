@@ -232,8 +232,8 @@ class UserController extends Controller
         $submissions = ProjectSubmission::where('user_id', $inviter->id)->get();
 
         foreach ($submissions as $submission) {
-            $ids = $submission->team_member_ids ?? [];
-            $names = $submission->team_members ?? [];
+            $ids = is_array($submission->team_member_ids) ? $submission->team_member_ids : [];
+            $names = is_array($submission->team_members) ? $submission->team_members : [];
 
             if (!in_array($user->id, $ids)) {
                 $ids[] = $user->id;
