@@ -45,10 +45,10 @@ class TeamDocumentController extends Controller
             'description'         => 'nullable|string|max:2000',
             'tagged_member_ids'   => 'nullable|string',   // JSON-encoded array
             'tagged_member_names' => 'nullable|string',   // JSON-encoded array
-            'manual_doc'          => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'manual_doc'          => 'nullable|file|mimes:pdf,doc,docx|max:30720',
             'source_code'         => 'nullable|file|mimes:zip|max:102400',
-            'database_file'       => 'nullable|file|mimes:csv,json,xlsx,xls,zip,sql,db,txt|max:102400',
-            'final_doc'           => 'nullable|file|mimes:pdf,doc,docx,ppt,pptx,txt|max:10240',
+            'database_file'       => 'nullable|file|mimes:csv,json,xlsx,xls,zip,sql,db,txt|max:51200',
+            'final_doc'           => 'nullable|file|mimes:pdf,doc,docx,ppt,pptx,txt|max:51200',
         ]);
 
         $user   = $request->user();
