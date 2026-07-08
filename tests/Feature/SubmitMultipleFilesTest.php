@@ -170,4 +170,17 @@ class SubmitMultipleFilesTest extends TestCase
         // Verify contribution file is deleted from disk
         \Illuminate\Support\Facades\Storage::disk('public')->assertMissing($contributionFilePath);
     }
+
+    public function test_api_always_returns_json_even_without_accept_header(): void
+    {
+        // Make request to protected API endpoint without any Accept headers or credentials
+        $response = $this->call('GET', '/api/submissions');
+
+        // It should return 401 Unauthenticated instead of trying to redirect to /login route
+        $response->assertStatus(401);
+        $response->assertHeader('Content-Type', 'application/json');
+        $response->assertJson([
+            'message' => 'Unauthenticated.'
+        ]);
+    }
 }

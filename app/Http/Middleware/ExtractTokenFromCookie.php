@@ -15,6 +15,8 @@ class ExtractTokenFromCookie
      */
     public function handle(Request $request, Closure $next): Response
     {
+        $request->headers->set('Accept', 'application/json');
+
         if (!$request->headers->has('Authorization')) {
             $token = $request->cookie('radice_auth_token');
             if ($token) {
