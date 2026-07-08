@@ -36,6 +36,22 @@ Route::get('/debug-upload-limits', function () {
     ]);
 });
 
+// Route to programmatically run storage:link on the remote server
+Route::get('/run-storage-link', function () {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('storage:link');
+        return response()->json([
+            'message' => 'Storage link created successfully.',
+            'output' => \Illuminate\Support\Facades\Artisan::output(),
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Failed to create storage link.',
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
 // Logout requires auth
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
