@@ -100,8 +100,10 @@ class ProjectSubmission extends Model
 
             foreach ($arrayFileFields as $field) {
                 if ($model->isDirty($field)) {
-                    $original = $model->getOriginal($field) ?? [];
-                    $current = $model->$field ?? [];
+                    $original = $model->getOriginal($field);
+                    $original = is_array($original) ? $original : [];
+                    $current = $model->$field;
+                    $current = is_array($current) ? $current : [];
                     $deleted = array_diff($original, $current);
                     foreach ($deleted as $path) {
                         Storage::disk('public')->delete($path);
@@ -111,15 +113,20 @@ class ProjectSubmission extends Model
         });
 
         static::deleted(function ($model) {
+            $documentPaths = is_array($model->document_paths) ? $model->document_paths : [];
+            $sourceCodePaths = is_array($model->source_code_paths) ? $model->source_code_paths : [];
+            $datasetPaths = is_array($model->dataset_paths) ? $model->dataset_paths : [];
+            $projectImagePaths = is_array($model->project_image_paths) ? $model->project_image_paths : [];
+
             $paths = array_filter([
                 $model->cover_image_path,
                 $model->document_path,
                 $model->source_code_path,
                 $model->dataset_path,
-                ...($model->document_paths ?? []),
-                ...($model->source_code_paths ?? []),
-                ...($model->dataset_paths ?? []),
-                ...($model->project_image_paths ?? []),
+                ...$documentPaths,
+                ...$sourceCodePaths,
+                ...$datasetPaths,
+                ...$projectImagePaths,
             ]);
 
             foreach ($paths as $path) {
@@ -140,12 +147,13 @@ class ProjectSubmission extends Model
 
     public function getDocumentUrlsAttribute()
     {
-        if (empty($this->document_paths)) {
+        $paths = $this->document_paths;
+        if (empty($paths) || !is_array($paths)) {
             return [];
         }
         return array_map(function ($path) {
             return Storage::disk('public')->url($path);
-        }, $this->document_paths);
+        }, $paths);
     }
 
     public function getSourceCodeUrlAttribute()
@@ -155,12 +163,13 @@ class ProjectSubmission extends Model
 
     public function getSourceCodeUrlsAttribute()
     {
-        if (empty($this->source_code_paths)) {
+        $paths = $this->source_code_paths;
+        if (empty($paths) || !is_array($paths)) {
             return [];
         }
         return array_map(function ($path) {
             return Storage::disk('public')->url($path);
-        }, $this->source_code_paths);
+        }, $paths);
     }
 
     public function getDatasetUrlAttribute()
@@ -170,21 +179,23 @@ class ProjectSubmission extends Model
 
     public function getDatasetUrlsAttribute()
     {
-        if (empty($this->dataset_paths)) {
+        $paths = $this->dataset_paths;
+        if (empty($paths) || !is_array($paths)) {
             return [];
         }
         return array_map(function ($path) {
             return Storage::disk('public')->url($path);
-        }, $this->dataset_paths);
+        }, $paths);
     }
 
     public function getProjectImageUrlsAttribute()
     {
-        if (empty($this->project_image_paths)) {
+        $paths = $this->project_image_paths;
+        if (empty($paths) || !is_array($paths)) {
             return [];
         }
         return array_map(function ($path) {
             return Storage::disk('public')->url($path);
-        }, $this->project_image_paths);
+        }, $paths);
     }
 }

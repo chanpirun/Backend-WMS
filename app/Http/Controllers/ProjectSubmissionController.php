@@ -286,15 +286,20 @@ class ProjectSubmissionController extends Controller
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
+        $documentPaths = is_array($submission->document_paths) ? $submission->document_paths : [];
+        $sourcePaths = is_array($submission->source_code_paths) ? $submission->source_code_paths : [];
+        $datasetPaths = is_array($submission->dataset_paths) ? $submission->dataset_paths : [];
+        $projectImagePaths = is_array($submission->project_image_paths) ? $submission->project_image_paths : [];
+
         $paths = array_filter([
             $submission->cover_image_path,
             $submission->document_path,
             $submission->source_code_path,
             $submission->dataset_path,
-            ...($submission->document_paths ?? []),
-            ...($submission->source_code_paths ?? []),
-            ...($submission->dataset_paths ?? []),
-            ...($submission->project_image_paths ?? []),
+            ...$documentPaths,
+            ...$sourcePaths,
+            ...$datasetPaths,
+            ...$projectImagePaths,
         ]);
 
         foreach ($paths as $path) {
